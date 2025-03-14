@@ -1,63 +1,35 @@
 // Stock.js
-import { useState, useEffect } from "react";
-import { supabase } from "./supabaseClient";
+import { useState, useEffect, useContext } from "react";
+import { AuthContext } from "./contexts/AuthContext";
+import { fetchSalesData, fetchImportsData, fetchLocationsData } from "./utils/fetchData";
+import { getCachedData, setCachedData } from "./utils/cache";
 
 function Stock() {
+  const { user, loading: authLoading } = useContext(AuthContext);
   const [stockData, setStockData] = useState([]);
   const [locations, setLocations] = useState([]);
   const [selectedLocation, setSelectedLocation] = useState("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [filters, setFilters] = useState({
-    locationName: "",
-    productId: "",
-  });
+  const [filters, setFilters] = useState({ locationName: "", productId: "" });
 
   useEffect(() => {
-    const fetchStockData = async () => {
+    if (!user || authLoading) return;
+
+    const loadData = async () => {
       try {
-        const cachedData = sessionStorage.getItem("supabaseData");
-        const cachedTimestamp = sessionStorage.getItem("supabaseTimestamp");
-        const now = Date.now();
-        const thirtyMinutes = 30 * 60 * 1000;
+        const cached = getCachedData();
+        let rawSalesData = cached?.sales;
+        let rawImportsData = cached?.imports;
+        let rawLocationsData = cached?.locations;
 
-        let rawSalesData, rawImportsData, rawLocationsData;
-        if (cachedData && cachedTimestamp && now - parseInt(cachedTimestamp) < thirtyMinutes) {
-          const cached = JSON.parse(cachedData);
-          rawSalesData = cached.sales;
-          rawImportsData = cached.imports;
-          rawLocationsData = cached.locations;
-        } else {
-          const { data: userData } = await supabase.auth.signInWithPassword({
-            email: "mickeytytnc2@gmail.com",
-            password: "12345678",
-          });
-          if (!userData.user) throw new Error("Login failed");
-
-          const [salesResponse, importsResponse, locationsResponse] = await Promise.all([
-            supabase.from("Sale").select("*"),
-            supabase.from("Import").select("*"),
-            supabase.from("Location").select("*"),
-          ]);
-
-          if (salesResponse.error) throw salesResponse.error;
-          if (importsResponse.error) throw importsResponse.error;
-          if (locationsResponse.error) throw locationsResponse.error;
-
-          rawSalesData = salesResponse.data;
-          rawImportsData = importsResponse.data;
-          rawLocationsData = locationsResponse.data;
-
-          const newData = {
-            sales: rawSalesData,
-            imports: rawImportsData,
-            locations: rawLocationsData,
-          };
-          sessionStorage.setItem("supabaseData", JSON.stringify(newData));
-          sessionStorage.setItem("supabaseTimestamp", now.toString());
+        if (!rawSalesData || !rawImportsData || !rawLocationsData) {
+          rawSalesData = await fetchSalesData();
+          rawImportsData = await fetchImportsData();
+          rawLocationsData = await fetchLocationsData();
+          setCachedData({ sales: rawSalesData, imports: rawImportsData, locations: rawLocationsData });
         }
 
-        // คำนวณยอดคงเหลือ
         const stockByLocation = {};
 
         rawImportsData.forEach((importItem) => {
@@ -151,20 +123,15 @@ function Stock() {
         setLoading(false);
       }
     };
+    loadData();
+  }, [user, authLoading]);
 
-    fetchStockData();
-  }, []);
-
-  const handleLocationChange = (event) => {
-    setSelectedLocation(event.target.value);
-  };
-
+  const handleLocationChange = (event) => setSelectedLocation(event.target.value);
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
     setFilters(prev => ({ ...prev, [name]: value.toLowerCase() }));
   };
 
-  // กรองข้อมูลตามสาขาและฟิลเตอร์
   const filteredStock = stockData
     .filter(item => selectedLocation === "all" || item.locationId === selectedLocation)
     .filter(item => 
@@ -172,12 +139,9 @@ function Stock() {
       item.productId.toLowerCase().includes(filters.productId)
     );
 
-  // ฟังก์ชันเพิ่ม comma
-  const formatNumber = (num) => {
-    return Number(num).toLocaleString("en-US", { minimumFractionDigits: 0 });
-  };
+  const formatNumber = (num) => Number(num).toLocaleString("en-US", { minimumFractionDigits: 0 });
 
-  if (loading) return <p>Loading...</p>;
+  if (authLoading || loading) return <p>Loading...</p>;
   if (error) return <p>Error: {error}</p>;
 
   return (
@@ -187,40 +151,21 @@ function Stock() {
         <label htmlFor="locationSelect">Select Location: </label>
         <select id="locationSelect" value={selectedLocation} onChange={handleLocationChange}>
           <option value="all">ทุกสาขา</option>
-          {locations.map((loc) => (
-            <option key={loc.location_id} value={loc.location_id}>
-              {loc.location}
-            </option>
-          ))}
+          {locations.map(loc => <option key={loc.location_id} value={loc.location_id}>{loc.location}</option>)}
         </select>
       </div>
-
       <table style={{ borderCollapse: "collapse", width: "100%", maxWidth: "1000px" }}>
         <thead>
           <tr>
             <th style={{ border: "1px solid black", padding: "8px" }}>
               Location
               <br />
-              <input
-                type="text"
-                name="locationName"
-                value={filters.locationName}
-                onChange={handleFilterChange}
-                placeholder="Filter Location"
-                style={{ width: "90%", marginTop: "5px" }}
-              />
+              <input type="text" name="locationName" value={filters.locationName} onChange={handleFilterChange} placeholder="Filter Location" style={{ width: "90%", marginTop: "5px" }} />
             </th>
             <th style={{ border: "1px solid black", padding: "8px" }}>
               Product ID
               <br />
-              <input
-                type="text"
-                name="productId"
-                value={filters.productId}
-                onChange={handleFilterChange}
-                placeholder="Filter Product ID"
-                style={{ width: "90%", marginTop: "5px" }}
-              />
+              <input type="text" name="productId" value={filters.productId} onChange={handleFilterChange} placeholder="Filter Product ID" style={{ width: "90%", marginTop: "5px" }} />
             </th>
             <th style={{ border: "1px solid black", padding: "8px" }}>Imported</th>
             <th style={{ border: "1px solid black", padding: "8px" }}>Sold</th>
