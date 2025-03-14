@@ -1,6 +1,7 @@
-// App.js
-import { AuthProvider } from "./contexts/AuthContext";
-import { Routes, Route, Link } from "react-router-dom";
+import { useContext } from "react";
+import { AuthContext } from "./contexts/AuthContext";
+import { Routes, Route, Link, Navigate } from "react-router-dom";
+import Login from "./Login";
 import MonthlySales from "./MonthlySales";
 import SalesByLocation from "./SalesByLocation";
 import SalesByProduct from "./SalesByProduct";
@@ -8,29 +9,62 @@ import Stock from "./Stock";
 import Dashboard from "./Dashboard";
 
 function App() {
-  return (
-    <AuthProvider>
-      <div>
-        <h1>Test Supabase Tables</h1>
-        <nav>
-          <Link to="/">Home</Link> | <Link to="/dashboard">Dashboard</Link> | 
-          <Link to="/monthly-sales">Monthly Sales</Link> | 
-          <Link to="/sales-by-location">Sales by Location</Link> | 
-          <Link to="/sales-by-product">Sales by Product</Link> | 
-          <Link to="/stock">Stock</Link>
-        </nav>
+  const { user, loading } = useContext(AuthContext);
 
-        <Routes>
-          <Route path="/" element={<div>Home Page</div>} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/monthly-sales" element={<MonthlySales />} />
-          <Route path="/sales-by-location" element={<SalesByLocation />} />
-          <Route path="/sales-by-product" element={<SalesByProduct />} />
-          <Route path="/stock" element={<Stock />} />
-        </Routes>
-      </div>
-    </AuthProvider>
+  if (loading) {
+    return <div>Loading...</div>;
+  }
+
+  return (
+    <div>
+      <nav style={styles.nav}>
+        <Link to="/" style={styles.link}>Dashboard</Link> |{" "}
+        
+        <Link to="/monthly-sales" style={styles.link}>Monthly Sales</Link> |{" "}
+        <Link to="/sales-by-location" style={styles.link}>Sales by Location</Link> |{" "}
+        <Link to="/sales-by-product" style={styles.link}>Sales by Product</Link> |{" "}
+        <Link to="/stock" style={styles.link}>Stock</Link>
+      </nav>
+
+      <Routes>
+        <Route path="/" element={user ? <Navigate to="/dashboard" /> : <Login />} />
+        <Route
+          path="/dashboard"
+          element={user ? <Dashboard /> : <Navigate to="/" />}
+        />
+        <Route
+          path="/monthly-sales"
+          element={user ? <MonthlySales /> : <Navigate to="/" />}
+        />
+        <Route
+          path="/sales-by-location"
+          element={user ? <SalesByLocation /> : <Navigate to="/" />}
+        />
+        <Route
+          path="/sales-by-product"
+          element={user ? <SalesByProduct /> : <Navigate to="/" />}
+        />
+        <Route
+          path="/stock"
+          element={user ? <Stock /> : <Navigate to="/" />}
+        />
+      </Routes>
+    </div>
   );
 }
+
+const styles = {
+  nav: {
+    padding: "10px",
+    backgroundColor: "#f8f9fa",
+    borderBottom: "1px solid #ddd",
+    textAlign: "center",
+  },
+  link: {
+    margin: "0 10px",
+    textDecoration: "none",
+    color: "#007bff",
+  },
+};
 
 export default App;
