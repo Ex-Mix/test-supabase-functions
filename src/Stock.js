@@ -1,4 +1,3 @@
-// Stock.js
 import { useState, useEffect, useContext } from "react";
 import { AuthContext } from "./contexts/AuthContext";
 import { fetchSalesData, fetchImportsData, fetchLocationsData } from "./utils/fetchData";
@@ -11,7 +10,28 @@ function Stock() {
   const [selectedLocation, setSelectedLocation] = useState("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [filters, setFilters] = useState({ locationName: "", productId: "" });
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'ascending' });
+
+  // Define the stock thresholds for different locations
+  const getStockThreshold = (locationName) => {
+    // EmQuartier has a stock threshold of 15, others have 10
+    return locationName.includes("เอ็มควอเทียร์") || locationName.includes("EmQuartier") || 
+           locationName.includes("ซุปเปอร์มาร์เก็ต") || locationName.includes("Supermarket") ? 15 : 10;
+  };
+
+  // Function to determine the status color based on remaining stock
+  const getStockStatusColor = (remaining, locationName) => {
+    const maxStock = getStockThreshold(locationName);
+    const percentage = (remaining / maxStock) * 100;
+    
+    if (percentage <= 20) {
+      return "#FF0000"; // Critical - Red
+    } else if (percentage <= 50) {
+      return "#FFA500"; // Warning - Orange
+    } else {
+      return "#008000"; // Normal - Green
+    }
+  };
 
   useEffect(() => {
     if (!user || authLoading) return;
@@ -126,19 +146,43 @@ function Stock() {
     loadData();
   }, [user, authLoading]);
 
-  const handleLocationChange = (event) => setSelectedLocation(event.target.value);
-  const handleFilterChange = (e) => {
-    const { name, value } = e.target;
-    setFilters(prev => ({ ...prev, [name]: value.toLowerCase() }));
+  const requestSort = (key) => {
+    let direction = 'ascending';
+    if (sortConfig.key === key && sortConfig.direction === 'ascending') {
+      direction = 'descending';
+    }
+    setSortConfig({ key, direction });
   };
 
-  const filteredStock = stockData
-    .filter(item => selectedLocation === "all" || item.locationId === selectedLocation)
-    .filter(item => 
-      item.locationName.toLowerCase().includes(filters.locationName) &&
-      item.productId.toLowerCase().includes(filters.productId)
-    );
+  const getClassNamesFor = (name) => {
+    if (!sortConfig) {
+      return;
+    }
+    return sortConfig.key === name ? sortConfig.direction : undefined;
+  };
 
+  const handleLocationChange = (event) => setSelectedLocation(event.target.value);
+
+  // Get sorted data
+  const getSortedData = () => {
+    const filteredData = stockData.filter(item => 
+      selectedLocation === "all" || item.locationId === selectedLocation
+    );
+    
+    if (!sortConfig.key) return filteredData;
+
+    return [...filteredData].sort((a, b) => {
+      if (a[sortConfig.key] < b[sortConfig.key]) {
+        return sortConfig.direction === 'ascending' ? -1 : 1;
+      }
+      if (a[sortConfig.key] > b[sortConfig.key]) {
+        return sortConfig.direction === 'ascending' ? 1 : -1;
+      }
+      return 0;
+    });
+  };
+
+  const sortedData = getSortedData();
   const formatNumber = (num) => Number(num).toLocaleString("en-US", { minimumFractionDigits: 0 });
 
   if (authLoading || loading) return <p>Loading...</p>;
@@ -154,40 +198,156 @@ function Stock() {
           {locations.map(loc => <option key={loc.location_id} value={loc.location_id}>{loc.location}</option>)}
         </select>
       </div>
+      <div style={{ marginBottom: "20px" }}>
+        <div style={{ display: "flex", gap: "20px", alignItems: "center" }}>
+          <span>Stock Status Legend:</span>
+          <span style={{ color: "#FF0000", fontWeight: "bold", display: "flex", alignItems: "center" }}>
+            <div style={{ width: "15px", height: "15px", backgroundColor: "#FF0000", marginRight: "5px" }}></div>
+            Critical (&lt;= 20%)
+          </span>
+          <span style={{ color: "#FFA500", fontWeight: "bold", display: "flex", alignItems: "center" }}>
+            <div style={{ width: "15px", height: "15px", backgroundColor: "#FFA500", marginRight: "5px" }}></div>
+            Warning (&lt;= 50%)
+          </span>
+          <span style={{ color: "#008000", fontWeight: "bold", display: "flex", alignItems: "center" }}>
+            <div style={{ width: "15px", height: "15px", backgroundColor: "#008000", marginRight: "5px" }}></div>
+            Normal (&gt; 50%)
+          </span>
+        </div>
+        <div style={{ marginTop: "5px" }}>
+          <p><small>Note: EmQuartier Supermarket max stock: 15, Other locations max stock: 10</small></p>
+        </div>
+      </div>
       <table style={{ borderCollapse: "collapse", width: "100%", maxWidth: "1000px" }}>
         <thead>
           <tr>
-            <th style={{ border: "1px solid black", padding: "8px" }}>
-              Location
-              <br />
-              <input type="text" name="locationName" value={filters.locationName} onChange={handleFilterChange} placeholder="Filter Location" style={{ width: "90%", marginTop: "5px" }} />
+            <th 
+              style={{ 
+                border: "1px solid black", 
+                padding: "8px", 
+                cursor: "pointer",
+                backgroundColor: "#f2f2f2"
+              }} 
+              onClick={() => requestSort('locationName')}
+              className={getClassNamesFor('locationName')}
+            >
+              Location {sortConfig.key === 'locationName' ? (sortConfig.direction === 'ascending' ? '↑' : '↓') : ''}
             </th>
-            <th style={{ border: "1px solid black", padding: "8px" }}>
-              Product ID
-              <br />
-              <input type="text" name="productId" value={filters.productId} onChange={handleFilterChange} placeholder="Filter Product ID" style={{ width: "90%", marginTop: "5px" }} />
+            <th 
+              style={{ 
+                border: "1px solid black", 
+                padding: "8px", 
+                cursor: "pointer",
+                backgroundColor: "#f2f2f2"
+              }} 
+              onClick={() => requestSort('productId')}
+              className={getClassNamesFor('productId')}
+            >
+              Product ID {sortConfig.key === 'productId' ? (sortConfig.direction === 'ascending' ? '↑' : '↓') : ''}
             </th>
-            <th style={{ border: "1px solid black", padding: "8px" }}>Imported</th>
-            <th style={{ border: "1px solid black", padding: "8px" }}>Sold</th>
-            <th style={{ border: "1px solid black", padding: "8px" }}>Remaining</th>
-            <th style={{ border: "1px solid black", padding: "8px" }}>Last Import Date</th>
-            <th style={{ border: "1px solid black", padding: "8px" }}>Stock at Last Import</th>
-            <th style={{ border: "1px solid black", padding: "8px" }}>Sold After Last Import</th>
+            <th 
+              style={{ 
+                border: "1px solid black", 
+                padding: "8px", 
+                cursor: "pointer",
+                backgroundColor: "#f2f2f2"
+              }} 
+              onClick={() => requestSort('imported')}
+              className={getClassNamesFor('imported')}
+            >
+              Imported {sortConfig.key === 'imported' ? (sortConfig.direction === 'ascending' ? '↑' : '↓') : ''}
+            </th>
+            <th 
+              style={{ 
+                border: "1px solid black", 
+                padding: "8px", 
+                cursor: "pointer",
+                backgroundColor: "#f2f2f2"
+              }} 
+              onClick={() => requestSort('sold')}
+              className={getClassNamesFor('sold')}
+            >
+              Sold {sortConfig.key === 'sold' ? (sortConfig.direction === 'ascending' ? '↑' : '↓') : ''}
+            </th>
+            <th 
+              style={{ 
+                border: "1px solid black", 
+                padding: "8px", 
+                cursor: "pointer",
+                backgroundColor: "#f2f2f2"
+              }} 
+              onClick={() => requestSort('remaining')}
+              className={getClassNamesFor('remaining')}
+            >
+              Remaining {sortConfig.key === 'remaining' ? (sortConfig.direction === 'ascending' ? '↑' : '↓') : ''}
+            </th>
+            <th 
+              style={{ 
+                border: "1px solid black", 
+                padding: "8px", 
+                cursor: "pointer",
+                backgroundColor: "#f2f2f2"
+              }} 
+              onClick={() => requestSort('lastImportDate')}
+              className={getClassNamesFor('lastImportDate')}
+            >
+              Last Import Date {sortConfig.key === 'lastImportDate' ? (sortConfig.direction === 'ascending' ? '↑' : '↓') : ''}
+            </th>
+            <th 
+              style={{ 
+                border: "1px solid black", 
+                padding: "8px", 
+                cursor: "pointer",
+                backgroundColor: "#f2f2f2"
+              }} 
+              onClick={() => requestSort('stockAtLastImport')}
+              className={getClassNamesFor('stockAtLastImport')}
+            >
+              Stock at Last Import {sortConfig.key === 'stockAtLastImport' ? (sortConfig.direction === 'ascending' ? '↑' : '↓') : ''}
+            </th>
+            <th 
+              style={{ 
+                border: "1px solid black", 
+                padding: "8px", 
+                cursor: "pointer",
+                backgroundColor: "#f2f2f2"
+              }} 
+              onClick={() => requestSort('soldAfterLastImport')}
+              className={getClassNamesFor('soldAfterLastImport')}
+            >
+              Sold After Last Import {sortConfig.key === 'soldAfterLastImport' ? (sortConfig.direction === 'ascending' ? '↑' : '↓') : ''}
+            </th>
           </tr>
         </thead>
         <tbody>
-          {filteredStock.map((item, index) => (
-            <tr key={index}>
-              <td style={{ border: "1px solid black", padding: "8px" }}>{item.locationName}</td>
-              <td style={{ border: "1px solid black", padding: "8px" }}>{item.productId}</td>
-              <td style={{ border: "1px solid black", padding: "8px" }}>{formatNumber(item.imported)}</td>
-              <td style={{ border: "1px solid black", padding: "8px" }}>{formatNumber(item.sold)}</td>
-              <td style={{ border: "1px solid black", padding: "8px" }}>{formatNumber(item.remaining)}</td>
-              <td style={{ border: "1px solid black", padding: "8px" }}>{item.lastImportDate}</td>
-              <td style={{ border: "1px solid black", padding: "8px" }}>{formatNumber(item.stockAtLastImport)}</td>
-              <td style={{ border: "1px solid black", padding: "8px" }}>{formatNumber(item.soldAfterLastImport)}</td>
-            </tr>
-          ))}
+          {sortedData.map((item, index) => {
+            const statusColor = getStockStatusColor(item.remaining, item.locationName);
+            const maxStock = getStockThreshold(item.locationName);
+            const stockPercentage = Math.round((item.remaining / maxStock) * 100);
+            
+            return (
+              <tr key={index}>
+                <td style={{ border: "1px solid black", padding: "8px" }}>{item.locationName}</td>
+                <td style={{ border: "1px solid black", padding: "8px" }}>{item.productId}</td>
+                <td style={{ border: "1px solid black", padding: "8px", textAlign: "right" }}>{formatNumber(item.imported)}</td>
+                <td style={{ border: "1px solid black", padding: "8px", textAlign: "right" }}>{formatNumber(item.sold)}</td>
+                <td style={{ 
+                  border: "1px solid black", 
+                  padding: "8px", 
+                  color: statusColor,
+                  fontWeight: "bold",
+                  backgroundColor: statusColor === "#FF0000" ? "#FFEEEE" : 
+                                  statusColor === "#008000" ? "#F0FFF0" : "transparent",
+                  textAlign: "right"
+                }}>
+                  {formatNumber(item.remaining)}
+                </td>
+                <td style={{ border: "1px solid black", padding: "8px" }}>{item.lastImportDate}</td>
+                <td style={{ border: "1px solid black", padding: "8px", textAlign: "right" }}>{formatNumber(item.stockAtLastImport)}</td>
+                <td style={{ border: "1px solid black", padding: "8px", textAlign: "right" }}>{formatNumber(item.soldAfterLastImport)}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
